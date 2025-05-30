@@ -1,0 +1,10 @@
+xgboost
+shap
+pandas
+numpy
+scikit-learn
+shap
+matplotlib
+google-generativeai
+streamlit
+plotly
