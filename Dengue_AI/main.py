@@ -47,7 +47,7 @@ def main():
     shap_summary = analyzer.generate_text_summary()
     
     # Define RAG query
-    rag_query = "Explain the impact of weather features on dengue cases."
+    rag_query = "As an epidemiologist, you'll need to use all the information provided by: LSTM model predictions, SHAP method feedback and RAG system information to provide context and analysis of the situation and progress of the dengue epidemic, based on sources and statistics."
     
     # Initialize and run the dashboard
     dashboard = Dashboard(dataframe=df, analyzer=analyzer, gemini=gemini)
