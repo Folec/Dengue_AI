@@ -119,7 +119,7 @@ class Dashboard:
                 buf = io.BytesIO()
                 plt.savefig(buf, format='png', bbox_inches='tight', dpi=150)
                 buf.seek(0)
-                st.image(buf, use_column_width=True)
+                st.image(buf, use_container_width=True)
                 plt.close()
                 
             except Exception as e:
@@ -136,7 +136,7 @@ class Dashboard:
                 buf = io.BytesIO()
                 plt.savefig(buf, format='png', bbox_inches='tight', dpi=150)
                 buf.seek(0)
-                st.image(buf, use_column_width=True)
+                st.image(buf, use_container_width=True)
                 plt.close()
                 
             except Exception as e:
