@@ -74,7 +74,8 @@ class linear_regression:
         df['prediction'] = model.predict(X_final)
 
         return X_final, feature_names, model, df
-    
+
+## Load the data  
 x_train = pd.read_csv('Data/DengAI_Predicting_Disease_Spread_-_Training_Data_Features.csv', index_col= [0, 1, 2])
 y_train = pd.read_csv('Data/DengAI_Predicting_Disease_Spread_-_Training_Data_Labels.csv', index_col= [0, 1, 2])
 x_test = pd.read_csv('Data/DengAI_Predicting_Disease_Spread_-_Test_Data_Features.csv', index_col= [0, 1, 2])
@@ -94,6 +95,8 @@ sj_x_test.ffill(inplace=True)
 iq_x_train.ffill(inplace=True)
 iq_x_test.ffill(inplace=True)
 
+
+# Time Series Split for San Juan and Iquitos
 from sklearn.model_selection import TimeSeriesSplit
 
 # For San Juan
@@ -116,6 +119,7 @@ x_test_iq = iq_x_train.iloc[test_indices].reset_index(drop=True)
 y_train_iq = iq_y_train.iloc[train_indices].reset_index(drop=True)
 y_test_iq = iq_y_train.iloc[test_indices].reset_index(drop=True)
 
+## LSTM model for San Juan 
 import torch
 import torch.nn as nn
 import numpy as np
@@ -188,6 +192,8 @@ for epoch in range(epochs):
 
 print("Final LSTM MAE on test set:", mae_history[-1])
 
+
+## LSTM model for Iquitos
 # Calculate iq_top_features again using only the training set (to avoid data leakage)
 correlations = x_train_iq.corrwith(y_train_iq)
 iq_top_features = correlations.abs().sort_values(ascending=False).head(10).index.tolist()
