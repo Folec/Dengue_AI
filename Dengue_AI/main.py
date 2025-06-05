@@ -1,6 +1,6 @@
 import streamlit as st
 from shapanalyzer import ShapAnalyzer
-from prediction_model import LSTMRegressor
+from prediction_model import DengueLSTM
 from gemini import GeminiInterface
 import pandas as pd
 import google.generativeai as genai
