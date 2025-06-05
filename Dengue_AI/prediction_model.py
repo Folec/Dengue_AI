@@ -6,7 +6,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import TimeSeriesSplit
 
 class DengueLSTM:
-    def __init__(self, data_dir='Data', city='sj', lags=7, hidden_size=16, num_layers=1, epochs=50, patience=5, seed=42):
+    def __init__(self, data_dir='Data', city='sj', lags=35, hidden_size=64, num_layers=2, epochs=50, patience=5, seed=42):
         self.data_dir = data_dir
         self.city = city
         self.lags = lags
