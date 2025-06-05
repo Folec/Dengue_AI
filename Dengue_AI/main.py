@@ -5,6 +5,7 @@ from gemini import GeminiInterface
 import pandas as pd
 import google.generativeai as genai
 from dashboard import Dashboard 
+import torch.nn as nn
 
 # Streamlit page configuration
 st.set_page_config(
