@@ -5,3 +5,4 @@ plotly
 shap
 google-generativeai
 scikit-learn
+torch
