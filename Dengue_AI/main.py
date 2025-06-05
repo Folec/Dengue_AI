@@ -1,6 +1,6 @@
 import streamlit as st
 from shapanalyzer import ShapAnalyzer
-from prediction_model import linear_regression
+from prediction_model import LSTMRegressor
 from gemini import GeminiInterface
 import pandas as pd
 import google.generativeai as genai
