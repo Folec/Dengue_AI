@@ -4,156 +4,163 @@ import torch
 import torch.nn as nn
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import TimeSeriesSplit
-from sklearn.metrics import mean_absolute_error
 
+class DengueLSTM:
+    def __init__(self, data_dir='Data', city='sj', lags=7, hidden_size=16, num_layers=1, epochs=50, patience=5, seed=42):
+        self.data_dir = data_dir
+        self.city = city
+        self.lags = lags
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.epochs = epochs
+        self.patience = patience
+        self.seed = seed
+        self._set_seed()
+        self._load_data()
+        self._prepare_data()
+        self._build_model()
 
-# Data Loading 
-x_train = pd.read_csv('Data/dengue_features_train.csv', index_col=[0, 1, 2])
-y_train = pd.read_csv('Data/dengue_labels_train.csv', index_col=[0, 1, 2])
-x_test = pd.read_csv('Data/dengue_features_test.csv', index_col=[0, 1, 2])
+    def _set_seed(self):
+        np.random.seed(self.seed)
+        torch.manual_seed(self.seed)
+        torch.cuda.manual_seed_all(self.seed)
+        import random
+        random.seed(self.seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
 
-# Select San Juan data 
-sj_x_train = x_train.loc['sj'].copy()
-sj_y_train = y_train.loc['sj'].copy()
-sj_x_test = x_test.loc['sj'].copy()
+    def _load_data(self):
+        self.x_train = pd.read_csv(f'{self.data_dir}/dengue_features_train.csv', index_col=[0, 1, 2])
+        self.y_train = pd.read_csv(f'{self.data_dir}/dengue_labels_train.csv', index_col=[0, 1, 2])
+        self.x_test = pd.read_csv(f'{self.data_dir}/dengue_features_test.csv', index_col=[0, 1, 2])
 
-sj_x_train.ffill(inplace=True)
-sj_x_test.ffill(inplace=True)
-sj_x_train.drop('week_start_date', axis=1, inplace=True)
+    def _prepare_data(self):
+        # Select city data
+        sj_x_train = self.x_train.loc[self.city].copy()
+        sj_y_train = self.y_train.loc[self.city].copy()
+        sj_x_test = self.x_test.loc[self.city].copy()
+        sj_x_train.ffill(inplace=True)
+        sj_x_test.ffill(inplace=True)
+        sj_x_train.drop('week_start_date', axis=1, inplace=True)
 
-# Feature selection
-sj_x_train['total_cases'] = sj_y_train['total_cases']
-sj_corr = sj_x_train.corr()
-sj_top_features = sj_corr['total_cases'].drop('total_cases').abs().sort_values(ascending=False).head(9).index.tolist()
-sj_x_train.drop('total_cases', axis=1, inplace=True)
+        # Feature selection
+        sj_x_train['total_cases'] = sj_y_train['total_cases']
+        sj_corr = sj_x_train.corr()
+        self.sj_top_features = sj_corr['total_cases'].drop('total_cases').abs().sort_values(ascending=False).head(9).index.tolist()
+        sj_x_train.drop('total_cases', axis=1, inplace=True)
 
-# TimeSeriesSplit
-tscv = TimeSeriesSplit(n_splits=5)
-for train_indices, test_indices in tscv.split(sj_x_train):
-    pass
+        # TimeSeriesSplit
+        tscv = TimeSeriesSplit(n_splits=5)
+        for train_indices, test_indices in tscv.split(sj_x_train):
+            pass
+        x_train_sj = sj_x_train.iloc[train_indices].reset_index(drop=True)
+        x_test_sj = sj_x_train.iloc[test_indices].reset_index(drop=True)
+        y_train_sj = sj_y_train.iloc[train_indices].reset_index(drop=True)
+        y_test_sj = sj_y_train.iloc[test_indices].reset_index(drop=True)
 
-x_train_sj = sj_x_train.iloc[train_indices].reset_index(drop=True)
-x_test_sj = sj_x_train.iloc[test_indices].reset_index(drop=True)
-y_train_sj = sj_y_train.iloc[train_indices].reset_index(drop=True)
-y_test_sj = sj_y_train.iloc[test_indices].reset_index(drop=True)
+        # Scaling
+        self.feature_scaler = StandardScaler()
+        self.target_scaler = StandardScaler()
+        X_train_scaled = self.feature_scaler.fit_transform(x_train_sj[self.sj_top_features])
+        X_test_scaled = self.feature_scaler.transform(x_test_sj[self.sj_top_features])
+        y_train_scaled = self.target_scaler.fit_transform(y_train_sj['total_cases'].values.reshape(-1, 1)).flatten()
+        y_test_scaled = self.target_scaler.transform(y_test_sj['total_cases'].values.reshape(-1, 1)).flatten()
 
-# Scaling 
-feature_scaler = StandardScaler()
-target_scaler = StandardScaler()
-X_train_scaled = feature_scaler.fit_transform(x_train_sj[sj_top_features])
-X_test_scaled = feature_scaler.transform(x_test_sj[sj_top_features])
-y_train_scaled = target_scaler.fit_transform(y_train_sj['total_cases'].values.reshape(-1, 1)).flatten()
-y_test_scaled = target_scaler.transform(y_test_sj['total_cases'].values.reshape(-1, 1)).flatten()
+        # Lagged sequences
+        def lagged_sequences_np(X, y, lags):
+            Xs, ys = [], []
+            for i in range(lags, len(X)):
+                Xs.append(X[i-lags:i])
+                ys.append(y[i])
+            return np.array(Xs), np.array(ys)
 
-# Set seeds for reproducibility
-np.random.seed(42)
-torch.manual_seed(42)
-torch.cuda.manual_seed_all(42)
-import random
-random.seed(42)
+        self.X_train_seq, self.y_train_seq = lagged_sequences_np(X_train_scaled, y_train_scaled, self.lags)
+        self.X_test_seq, self.y_test_seq = lagged_sequences_np(X_test_scaled, y_test_scaled, self.lags)
 
-# Lagged sequences (same as notebook)
-def lagged_sequences_np(X, y, lags):
-    Xs, ys = [], []
-    for i in range(lags, len(X)):
-        Xs.append(X[i-lags:i])
-        ys.append(y[i])
-    return np.array(Xs), np.array(ys)
+        self.X_train_torch = torch.tensor(self.X_train_seq, dtype=torch.float32)
+        self.y_train_torch = torch.tensor(self.y_train_seq, dtype=torch.float32)
+        self.X_test_torch = torch.tensor(self.X_test_seq, dtype=torch.float32)
+        self.y_test_torch = torch.tensor(self.y_test_seq, dtype=torch.float32)
 
-lags = 7
-hidden_size = 16
-num_layers = 1
+        # For prediction on unseen test set
+        self.sj_x_test = sj_x_test
 
-X_train_seq, y_train_seq = lagged_sequences_np(X_train_scaled, y_train_scaled, lags)
-X_test_seq, y_test_seq = lagged_sequences_np(X_test_scaled, y_test_scaled, lags)
+    class LSTMRegressor(nn.Module):
+        def __init__(self, input_size, hidden_size, num_layers):
+            super().__init__()
+            self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
+            self.fc = nn.Linear(hidden_size, 1)
+        def forward(self, x):
+            out, _ = self.lstm(x)
+            out = out[:, -1, :]
+            out = self.fc(out)
+            return out
 
-X_train_torch = torch.tensor(X_train_seq, dtype=torch.float32)
-y_train_torch = torch.tensor(y_train_seq, dtype=torch.float32)
-X_test_torch = torch.tensor(X_test_seq, dtype=torch.float32)
-y_test_torch = torch.tensor(y_test_seq, dtype=torch.float32)
+    def _build_model(self):
+        self.model = self.LSTMRegressor(
+            input_size=self.X_train_torch.shape[2],
+            hidden_size=self.hidden_size,
+            num_layers=self.num_layers
+        )
+        self.criterion = nn.L1Loss()
+        self.optimizer = torch.optim.Adagrad(self.model.parameters(), lr=0.01)
 
-# LSTM Model (same as notebook) 
-class LSTMRegressor(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers):
-        super(LSTMRegressor, self).__init__()
-        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
-        self.fc = nn.Linear(hidden_size, 1)
-    def forward(self, x):
-        out, _ = self.lstm(x)
-        out = out[:, -1, :]
-        out = self.fc(out)
-        return out
+    def train(self):
+        best_mae = float('inf')
+        best_epoch = 0
+        best_model_state = None
+        for epoch in range(self.epochs):
+            self.model.train()
+            self.optimizer.zero_grad()
+            output = self.model(self.X_train_torch).squeeze()
+            loss = self.criterion(output, self.y_train_torch.squeeze())
+            loss.backward()
+            self.optimizer.step()
 
-model = LSTMRegressor(
-    input_size=X_train_torch.shape[2],
-    hidden_size=hidden_size,
-    num_layers=num_layers
-)
+            # Evaluate on test set at every epoch
+            self.model.eval()
+            with torch.no_grad():
+                y_pred_scaled = self.model(self.X_test_torch).squeeze().numpy()
+                y_pred = self.target_scaler.inverse_transform(y_pred_scaled.reshape(-1, 1)).flatten()
+                y_true = self.target_scaler.inverse_transform(self.y_test_torch.squeeze().numpy().reshape(-1, 1)).flatten()
+                y_pred = np.clip(y_pred, 0, None)
+                mae = np.mean(np.abs(y_pred - y_true))
 
-criterion = nn.L1Loss()
-optimizer = torch.optim.Adagrad(model.parameters(), lr=0.01)
-epochs = 50
-patience = 5
+                # Early stopping check
+                if mae < best_mae:
+                    best_mae = mae
+                    best_epoch = epoch
+                    best_model_state = self.model.state_dict()
+                elif epoch - best_epoch >= self.patience:
+                    break
 
-mae_history = []
-best_mae = float('inf')
-best_epoch = 0
-best_model_state = None
+        # Restore best model
+        if best_model_state is not None:
+            self.model.load_state_dict(best_model_state)
 
-for epoch in range(epochs):
+    def predict_unseen(self):
+        x_pred_sj = self.sj_x_test[self.sj_top_features].copy()
+        x_pred_sj_scaled = self.feature_scaler.transform(x_pred_sj)
+
+        def lagged_sequences_predict(X, lags):
+            Xs = []
+            for i in range(lags, len(X)):
+                Xs.append(X[i-lags:i])
+            return np.array(Xs)
+
+        x_pred_sj_seq = lagged_sequences_predict(x_pred_sj_scaled, self.lags)
+        X_pred_sj_torch = torch.tensor(x_pred_sj_seq, dtype=torch.float32)
+
+        self.model.eval()
+        with torch.no_grad():
+            y_pred_scaled = self.model(X_pred_sj_torch).squeeze().numpy()
+            y_pred = self.target_scaler.inverse_transform(y_pred_scaled.reshape(-1, 1)).flatten()
+            y_pred = np.round(y_pred).astype(int)
+            y_pred = np.clip(y_pred, 0, None)
+        return y_pred
+
+if __name__ == "__main__":
+    model = DengueLSTM()
     model.train()
-    optimizer.zero_grad()
-    output = model(X_train_torch).squeeze()
-    loss = criterion(output, y_train_torch.squeeze())
-    loss.backward()
-    optimizer.step()
-    
-    # Evaluate on test set at every epoch
-    model.eval()
-    with torch.no_grad():
-        y_pred_scaled = model(X_test_torch).squeeze().numpy()
-        y_pred = target_scaler.inverse_transform(y_pred_scaled.reshape(-1, 1)).flatten()
-        y_true = target_scaler.inverse_transform(y_test_torch.squeeze().numpy().reshape(-1, 1)).flatten()
-        y_pred = np.clip(y_pred, 0, None)
-        mae = np.mean(np.abs(y_pred - y_true))
-        mae_history.append(mae)
-        
-        # Early stopping check
-        if mae < best_mae:
-            best_mae = mae
-            best_epoch = epoch
-            best_model_state = model.state_dict()
-        elif epoch - best_epoch >= patience:
-            print(f"Early stopping at epoch {epoch+1}. Best MAE: {best_mae:.4f}")
-            break
-
-    if (epoch+1) % 5 == 0:
-        print(f"Epoch {epoch+1}/{epochs}, Loss: {loss.item():.4f}, Test MAE: {mae:.4f}")
-
-# Restore best model
-if best_model_state is not None:
-    model.load_state_dict(best_model_state)
-    print(f"Restored best model from epoch {best_epoch+1} with MAE: {best_mae:.4f}")
-
-print("Final LSTM MAE on test set:", best_mae)
-
-# Predict on unseen test set
-x_pred_sj = sj_x_test[sj_top_features].copy()
-x_pred_sj_scaled = feature_scaler.transform(x_pred_sj)
-
-def lagged_sequences_predict(X, lags):
-    Xs = []
-    for i in range(lags, len(X)):
-        Xs.append(X[i-lags:i])
-    return np.array(Xs)
-
-x_pred_sj_seq = lagged_sequences_predict(x_pred_sj_scaled, lags)
-X_pred_sj_torch = torch.tensor(x_pred_sj_seq, dtype=torch.float32)
-
-model.eval()
-with torch.no_grad():
-    y_pred_scaled = model(X_pred_sj_torch).squeeze().numpy()
-    y_pred = target_scaler.inverse_transform(y_pred_scaled.reshape(-1, 1)).flatten()
-    y_pred = np.round(y_pred).astype(int)
-    y_pred = np.clip(y_pred, 0, None)
-print("Predictions on unseen test set:", y_pred)
+    preds = model.predict_unseen()
+    print(preds)
