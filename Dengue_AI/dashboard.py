@@ -9,19 +9,9 @@ import io
 
 
 class Dashboard:
-    def __init__(self, dataframe, analyzer, gemini):
-        """
-        Initialize the Dashboard class.
 
-        :param dataframe: The DataFrame containing prediction results.
-        :param analyzer: An instance of the ShapAnalyzer class.
-        :param gemini: An instance of the GeminiInterface class.
-        """
-        self.dataframe = dataframe
-        self.analyzer = analyzer
-        self.gemini = gemini
 
-    def display_dataframe(self):
+    def display_dataframe(self, df):
         """
         Display the DataFrame containing prediction results.
         """
@@ -30,18 +20,18 @@ class Dashboard:
         # Add some basic statistics
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric("Total Records", len(self.dataframe))
+            st.metric("Total Records", len(df))
         with col2:
-            if "prediction" in self.dataframe.columns:
-                st.metric("Avg Prediction", f"{self.dataframe['prediction'].mean():.2f}")
+            if "predicted_cases" in df.columns:
+                st.metric("Avg Prediction", f"{df['predicted_cases'].mean():.2f}")
         with col3:
-            st.metric("Features", len(self.dataframe.columns))
+            st.metric("Features", len(df.columns))
         
         # Display the dataframe with search and filtering
-        st.dataframe(self.dataframe, use_container_width=True, height=400)
+        st.dataframe(df, use_container_width=True, height=400)
         
         # Option to download the data
-        csv = self.dataframe.to_csv(index=False)
+        csv = df.to_csv(index=False)
         st.download_button(
             label="📥 Download data as CSV",
             data=csv,
@@ -49,57 +39,43 @@ class Dashboard:
             mime='text/csv',
         )
 
-    def display_prediction_graph(self):
-        """
-        Display a graph of the predictions using both matplotlib and plotly.
-        """
-        st.subheader("📈 Prediction Visualization")
-        
-        # Check if prediction column exists
-        if "prediction" not in self.dataframe.columns:
-            st.warning("No 'prediction' column found in the dataframe. Please check your data.")
+    def display_prediction_graph(self, df):
+        st.subheader("📈 Prediction Visualization (by Year & Week)")
+    
+        # Remove leading/trailing spaces from column names
+        df = df.rename(columns=lambda x: x.strip())
+    
+        required_cols = {"year", "weekofyear", "predicted_cases"}
+        missing = required_cols - set(df.columns)
+        if missing:
+            st.warning(f"Missing columns for plotting: {missing}")
+            st.dataframe(df)
             return
-        
-        # Create tabs for different visualizations
-        tab1, tab2 = st.tabs(["Interactive Plot", "Static Plot"])
-        
-        with tab1:
-            # Interactive plotly chart
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                x=self.dataframe.index,
-                y=self.dataframe["prediction"],
-                mode='lines+markers',
-                name='Predictions',
-                line=dict(color='blue', width=2),
-                marker=dict(size=4)
-            ))
-            
-            fig.update_layout(
-                title="Prediction Over Time/Index",
-                xaxis_title="Index",
-                yaxis_title="Prediction Value",
-                hovermode='x unified',
-                height=500
-            )
-            
-            st.plotly_chart(fig, use_container_width=True)
-        
-        with tab2:
-            # Static matplotlib chart
-            fig, ax = plt.subplots(figsize=(12, 6))
-            ax.plot(self.dataframe.index, self.dataframe["prediction"], 
-                   label="Predictions", color="blue", linewidth=2)
-            ax.set_xlabel("Index")
-            ax.set_ylabel("Prediction")
-            ax.set_title("Prediction Graph")
-            ax.legend()
-            ax.grid(True, alpha=0.3)
-            
-            st.pyplot(fig)
-            plt.close()
+    
+        # Group by year and week, sum predicted cases
+        df_grouped = df.groupby(["year", "weekofyear"], as_index=False)["predicted_cases"].sum()
+        df_grouped["year_week"] = df_grouped["year"].astype(str) + "-W" + df_grouped["weekofyear"].astype(str)
+    
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=df_grouped["year_week"],
+            y=df_grouped["predicted_cases"],
+            mode='lines+markers',
+            name='Predicted Cases',
+            line=dict(color='blue', width=2),
+            marker=dict(size=4)
+        ))
+        fig.update_layout(
+            title="Predicted Dengue Cases per Week",
+            xaxis_title="Year-Week",
+            yaxis_title="Predicted Cases",
+            hovermode='x unified',
+            height=500
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
-    def display_shap_graphs(self):
+
+    def display_shap_graphs(self, df):
         """
         Display SHAP graphs (mean SHAP plot and swarm plot).
         """
@@ -150,7 +126,7 @@ class Dashboard:
             except Exception as e:
                 st.error(f"Error generating SHAP summary: {str(e)}")
 
-    def display_prompt_result(self, shap_summary, rag_query):
+    def display_prompt_result(self, df, shap_summary, rag_query):
         """
         Display the result of the prompt generated by the Gemini LLM.
         """
@@ -163,7 +139,7 @@ class Dashboard:
         # Generate and display insights
         with st.spinner("Generating insights with AI..."):
             try:
-                insights = self.gemini.generate_insights(shap_summary, self.dataframe, rag_query)
+                insights = self.gemini.generate_insights(shap_summary, df, rag_query)
                 
                 st.write("**AI Analysis:**")
                 st.write(insights)
@@ -177,14 +153,14 @@ class Dashboard:
                 
                 if st.button("Generate Custom Insights") and custom_query:
                     with st.spinner("Processing your question..."):
-                        custom_insights = self.gemini.generate_insights(shap_summary, self.dataframe, custom_query)
+                        custom_insights = self.gemini.generate_insights(shap_summary, df, custom_query)
                         st.write("**Custom Analysis:**")
                         st.success(custom_insights)
                         
             except Exception as e:
                 st.error(f"Error generating insights: {str(e)}")
 
-    def display_sidebar_info(self):
+    def display_sidebar_info(self, df):
         """
         Display additional information in the sidebar.
         """
@@ -192,18 +168,18 @@ class Dashboard:
         
         # Dataset info
         st.sidebar.subheader("Dataset Overview")
-        st.sidebar.write(f"• **Rows:** {len(self.dataframe)}")
-        st.sidebar.write(f"• **Columns:** {len(self.dataframe.columns)}")
+        st.sidebar.write(f"• **Rows:** {len(df)}")
+        st.sidebar.write(f"• **Columns:** {len(df.columns)}")
         
         # Column names
         st.sidebar.subheader("Available Columns")
-        for col in self.dataframe.columns:
+        for col in df.columns:
             st.sidebar.write(f"• {col}")
             
         # Basic statistics
-        if "prediction" in self.dataframe.columns:
+        if "predicted_cases" in df.columns:
             st.sidebar.subheader("Prediction Statistics")
-            pred_stats = self.dataframe["prediction"].describe()
+            pred_stats = df["predicted_cases"].describe()
             st.sidebar.write(f"• **Mean:** {pred_stats['mean']:.2f}")
             st.sidebar.write(f"• **Std:** {pred_stats['std']:.2f}")
             st.sidebar.write(f"• **Min:** {pred_stats['min']:.2f}")
@@ -213,35 +189,22 @@ class Dashboard:
         """
         Run the Streamlit dashboard.
         """
-        # Main title with emoji
+        st.cache_data.clear()
+        st.cache_resource.clear()
         st.title("🦟 Dengue Prediction Dashboard")
         st.markdown("---")
+
+        # Tabs for different cities
+        city_tabs = st.tabs(list(self.dataframe.keys()))
+        for i, city in enumerate(self.dataframe.keys()):
+            with city_tabs[i]:
+                st.header(f"🌆 {city} Data Overview")
+                st.write("This section provides an overview of the dengue prediction data for the selected city.")
         
-        # Display sidebar information
-        self.display_sidebar_info()
-        
-        # Main content
-        try:
-            # Create tabs for better organization
-            tab1, tab2, tab3, tab4 = st.tabs([
-                "📊 Data Overview", 
-                "📈 Predictions", 
-                "🔍 SHAP Analysis", 
-                "🤖 AI Insights"
-            ])
-            
-            with tab1:
-                self.display_dataframe()
-            
-            with tab2:
-                self.display_prediction_graph()
-            
-            with tab3:
-                self.display_shap_graphs()
-            
-            with tab4:
-                self.display_prompt_result(shap_summary, rag_query)
-                
-        except Exception as e:
-            st.error(f"An error occurred while running the dashboard: {str(e)}")
-            st.write("Please check your data and model configuration.")
+                city_df = self.dataframe[city]          
+
+                self.display_sidebar_info(city_df)
+                self.display_dataframe(city_df)
+                self.display_prediction_graph(city_df)
+                self.display_shap_graphs(city_df)
+                self.display_prompt_result(city_df, shap_summary, rag_query)

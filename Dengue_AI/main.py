@@ -5,7 +5,9 @@ from gemini import GeminiInterface
 import pandas as pd
 import google.generativeai as genai
 from dashboard import Dashboard 
+import torch
 import torch.nn as nn
+import prediction_model
 
 # Streamlit page configuration
 st.set_page_config(
@@ -15,44 +17,40 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Load and cache the data
 @st.cache_data
 def load_data():
     """Load and cache the data to avoid recomputation on every interaction"""
-    X_final, feature_names, model, df = linear_regression.create_X_final()
-    return X_final, feature_names, model, df
+    model = DengueLSTM()
+    dfs = model.get_city_dataframes()  
+    df_sj = dfs['San Juan']
+    df_iq = dfs['Iquitos']
+    return df_sj, df_iq
 
 @st.cache_resource
 def initialize_components():
     """Initialize and cache the components"""
     # Initialize GeminiInterface
-    API_KEY = "AIzaSyBl0at8sQs2lgBngITENuswZG-xUSkimoc" # Replace with your actual API key
+    API_KEY = "AIzaSyBl0at8sQs2lgBngITENuswZG-xUSkimoc" 
     genai.configure(api_key=API_KEY)
     gemini = GeminiInterface()
     return gemini
 
 def main():
-    # Load data
-    X_final, feature_names, model, df = load_data()
+    # Load data both dataframes for San Juan and Iquitos
+    df_sj, df_iq = load_data()
+
+    # Start geimin if need
     gemini = initialize_components()
-    
-    # Display basic info in sidebar
-    st.sidebar.write(f"Data shape: {X_final.shape}")
-    st.sidebar.write(f"Features: {len(feature_names)}")
-    
-    # Initialize SHAP analyzer
-    with st.spinner("Computing SHAP values..."):
-        analyzer = ShapAnalyzer(model, X_final, feature_names=feature_names)
-        analyzer.compute_shap_values()
-    
-    # Generate SHAP summary
-    shap_summary = analyzer.generate_text_summary()
     
     # Define RAG query
     rag_query = "As an epidemiologist, you'll need to use all the information provided by: LSTM model predictions, SHAP method feedback and RAG system information to provide context and analysis of the situation and progress of the dengue epidemic, based on sources and statistics."
     
     # Initialize and run the dashboard
-    dashboard = Dashboard(dataframe=df, analyzer=analyzer, gemini=gemini)
-    dashboard.run(shap_summary, rag_query)
+    dataframes = {'San Juan': df_sj, 'Iquitos': df_iq}
+
+    dashboard = Dashboard(dataframe=dataframes, analyzer=None, gemini=gemini)
+    dashboard.run(shap_summary=None, rag_query=None)
 
 if __name__ == "__main__":
     main()

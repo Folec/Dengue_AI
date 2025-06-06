@@ -4,10 +4,11 @@ import torch
 import torch.nn as nn
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import TimeSeriesSplit
+import os
 
 class DengueLSTM:
     def __init__(self, data_dir='Data', city='sj', lags=35, hidden_size=64, num_layers=2, epochs=50, patience=5, seed=42):
-        self.data_dir = data_dir
+        self.data_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', data_dir))
         self.city = city
         self.lags = lags
         self.hidden_size = hidden_size
@@ -30,9 +31,9 @@ class DengueLSTM:
         torch.backends.cudnn.benchmark = False
 
     def _load_data(self):
-        self.x_train = pd.read_csv(f'{self.data_dir}/dengue_features_train.csv', index_col=[0, 1, 2])
-        self.y_train = pd.read_csv(f'{self.data_dir}/dengue_labels_train.csv', index_col=[0, 1, 2])
-        self.x_test = pd.read_csv(f'{self.data_dir}/dengue_features_test.csv', index_col=[0, 1, 2])
+        self.x_train = pd.read_csv(f'{self.data_dir}\dengue_features_train.csv', index_col=[0, 1, 2])
+        self.y_train = pd.read_csv(f'{self.data_dir}\dengue_labels_train.csv', index_col=[0, 1, 2])
+        self.x_test = pd.read_csv(f'{self.data_dir}\dengue_features_test.csv', index_col=[0, 1, 2])
 
     def _prepare_data(self):
         # Select city data
@@ -158,9 +159,34 @@ class DengueLSTM:
             y_pred = np.round(y_pred).astype(int)
             y_pred = np.clip(y_pred, 0, None)
         return y_pred
+    
+    def create_X_final(self):
+        y_pred = self.predict_unseen()
+        dates = self.sj_x_test.index[self.lags:]
+        # Get the features used for prediction, aligned with the prediction dates
+        features_df = self.sj_x_test.loc[dates, self.sj_top_features].copy()
+        
+        # DataFrame with predictions
+        df = pd.DataFrame({
+            'predicted_cases': y_pred,
+        }, index=dates)
+        df = df.reset_index()
+        features_df = features_df.reset_index()
 
-if __name__ == "__main__":
-    model = DengueLSTM()
-    model.train()
-    preds = model.predict_unseen()
-    print(preds)
+        df_full = pd.concat([df, features_df.drop(columns=['year', 'weekofyear'], errors='ignore')], axis=1)
+        return self.X_train_seq, self.sj_top_features, self.model, df_full
+    
+    def transform_X_final(self, X_final_tuple):
+        X_final, feature_names, model, df = X_final_tuple
+        return df
+    
+    def get_city_dataframes(self):
+        city_names = {'sj': 'San Juan', 'iq': 'Iquitos'}
+        dfs = {}
+        for x in ['sj', 'iq']:
+            model = DengueLSTM(city=x)
+            result_tuple = model.create_X_final()
+            df_all = model.transform_X_final(result_tuple)
+            df_all.insert(0, 'city', city_names[x])  # Insert city name as first column
+            dfs[city_names[x]] = df_all
+        return dfs
