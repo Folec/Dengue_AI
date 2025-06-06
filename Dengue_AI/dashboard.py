@@ -6,10 +6,21 @@ import plotly.graph_objects as go
 from shapanalyzer import ShapAnalyzer
 from gemini import GeminiInterface
 import io
+import os
 
 
 class Dashboard:
+    def __init__(self, dataframe, analyzer, gemini):
+        """
+        Initialize the Dashboard class.
 
+        :param dataframe: Dict with city names as keys and DataFrames as values.
+        :param analyzer: An instance of the ShapAnalyzer class.
+        :param gemini: An instance of the GeminiInterface class.
+        """
+        self.dataframe = dataframe
+        self.analyzer = analyzer
+        self.gemini = gemini
 
     def display_dataframe(self, df):
         """
@@ -81,47 +92,50 @@ class Dashboard:
         """
         st.subheader("🔍 SHAP Analysis")
         
+        # Filter DataFrame to only feature columns for SHAP
+        feature_cols = getattr(self.analyzer, "feature_names", None)
+        if feature_cols is not None:
+            features_df = df[[col for col in feature_cols if col in df.columns]]
+        else:
+            # Remove known non-feature columns if feature_names is not available
+            features_df = df.drop(columns=[c for c in ["predicted_cases", "year", "weekofyear"] if c in df.columns], errors="ignore")
+
+        # Create a new ShapAnalyzer instance with only features
+        analyzer = ShapAnalyzer(self.analyzer.model, features_df, feature_names=features_df.columns.tolist())
+
         # Create tabs for different SHAP visualizations
         tab1, tab2 = st.tabs(["Feature Importance", "Feature Effects"])
         
         with tab1:
             st.write("**Mean SHAP Values (Feature Importance)**")
             try:
-                # Create a new figure for mean SHAP plot
                 plt.figure(figsize=(10, 8))
-                self.analyzer.plot_mean_shap()
-                
-                # Capture the current figure
+                analyzer.plot_mean_shap()
                 buf = io.BytesIO()
                 plt.savefig(buf, format='png', bbox_inches='tight', dpi=150)
                 buf.seek(0)
                 st.image(buf, use_container_width=True)
                 plt.close()
-                
             except Exception as e:
                 st.error(f"Error generating mean SHAP plot: {str(e)}")
         
         with tab2:
             st.write("**SHAP Swarm Plot (Feature Effects)**")
             try:
-                # Create a new figure for swarm plot
                 plt.figure(figsize=(10, 8))
-                self.analyzer.plot_swarm()
-                
-                # Capture the current figure
+                analyzer.plot_swarm()
                 buf = io.BytesIO()
                 plt.savefig(buf, format='png', bbox_inches='tight', dpi=150)
                 buf.seek(0)
                 st.image(buf, use_container_width=True)
                 plt.close()
-                
             except Exception as e:
                 st.error(f"Error generating swarm plot: {str(e)}")
         
         # Display SHAP summary as text
         with st.expander("📝 SHAP Analysis Summary"):
             try:
-                summary = self.analyzer.generate_text_summary()
+                summary = analyzer.generate_text_summary()
                 st.write(summary)
             except Exception as e:
                 st.error(f"Error generating SHAP summary: {str(e)}")
@@ -208,3 +222,14 @@ class Dashboard:
                 self.display_prediction_graph(city_df)
                 self.display_shap_graphs(city_df)
                 self.display_prompt_result(city_df, shap_summary, rag_query)
+
+
+# Example fix for loading the CSV file:
+script_dir = os.path.dirname(os.path.abspath(__file__))
+data_path = os.path.join(script_dir, "..", "Data", "dengue_features_train.csv")
+data_path = os.path.normpath(data_path)  # Ensures correct separators
+
+# For debugging, you can print the resolved path
+# print("Resolved data path:", data_path)
+
+df = pd.read_csv(data_path)

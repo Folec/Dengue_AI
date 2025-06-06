@@ -31,9 +31,14 @@ class DengueLSTM:
         torch.backends.cudnn.benchmark = False
 
     def _load_data(self):
-        self.x_train = pd.read_csv(f'{self.data_dir}\dengue_features_train.csv', index_col=[0, 1, 2])
-        self.y_train = pd.read_csv(f'{self.data_dir}\dengue_labels_train.csv', index_col=[0, 1, 2])
-        self.x_test = pd.read_csv(f'{self.data_dir}\dengue_features_test.csv', index_col=[0, 1, 2])
+        # Use os.path.join for cross-platform compatibility
+        features_train_path = os.path.join(self.data_dir, 'dengue_features_train.csv')
+        labels_train_path = os.path.join(self.data_dir, 'dengue_labels_train.csv')
+        features_test_path = os.path.join(self.data_dir, 'dengue_features_test.csv')
+
+        self.x_train = pd.read_csv(features_train_path, index_col=[0, 1, 2])
+        self.y_train = pd.read_csv(labels_train_path, index_col=[0, 1, 2])
+        self.x_test = pd.read_csv(features_test_path, index_col=[0, 1, 2])
 
     def _prepare_data(self):
         # Select city data
