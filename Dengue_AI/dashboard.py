@@ -7,6 +7,7 @@ from shapanalyzer import ShapAnalyzer
 from gemini import GeminiInterface
 import io
 import os
+from model_loader import DengueLSTM
 
 
 class Dashboard:
@@ -43,11 +44,13 @@ class Dashboard:
         
         # Option to download the data
         csv = df.to_csv(index=False)
+        # Use a unique key for each download_button based on the DataFrame's id
         st.download_button(
             label="📥 Download data as CSV",
             data=csv,
             file_name='prediction_results.csv',
             mime='text/csv',
+            key=f"download_csv_{id(df)}"
         )
 
     def display_prediction_graph(self, df):
@@ -91,17 +94,28 @@ class Dashboard:
         Display SHAP graphs (mean SHAP plot and swarm plot).
         """
         st.subheader("🔍 SHAP Analysis")
-        
-        # Filter DataFrame to only feature columns for SHAP
-        feature_cols = getattr(self.analyzer, "feature_names", None)
-        if feature_cols is not None:
-            features_df = df[[col for col in feature_cols if col in df.columns]]
-        else:
-            # Remove known non-feature columns if feature_names is not available
-            features_df = df.drop(columns=[c for c in ["predicted_cases", "year", "weekofyear"] if c in df.columns], errors="ignore")
 
-        # Create a new ShapAnalyzer instance with only features
-        analyzer = ShapAnalyzer(self.analyzer.model, features_df, feature_names=features_df.columns.tolist())
+        # Always use the correct city code for model loading
+        city = 'sj'
+        if 'city' in df.columns:
+            city_val = str(df['city'].iloc[0]).strip().lower()
+            if city_val in ['san juan', 'sj']:
+                city = 'sj'
+            elif city_val in ['iquitos', 'iq']:
+                city = 'iq'
+
+        try:
+            model_obj = DengueLSTM(city=city)
+            models_dir = os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')), "Models")
+            model_path = os.path.join(models_dir, f'dengue_lstm_{city}.pth')
+            scaler_path = os.path.join(models_dir, f'dengue_scalers_{city}.pkl')
+            model_obj.load_model(model_path, scaler_path)
+            feature_cols = model_obj.sj_top_features
+            features_df = df[[col for col in feature_cols if col in df.columns]]
+            analyzer = ShapAnalyzer(model_obj.model, features_df, feature_names=features_df.columns.tolist())
+        except Exception as e:
+            st.warning(f"SHAP model could not be loaded: {e}")
+            return
 
         # Create tabs for different SHAP visualizations
         tab1, tab2 = st.tabs(["Feature Importance", "Feature Effects"])
@@ -222,14 +236,3 @@ class Dashboard:
                 self.display_prediction_graph(city_df)
                 self.display_shap_graphs(city_df)
                 self.display_prompt_result(city_df, shap_summary, rag_query)
-
-
-# Example fix for loading the CSV file:
-script_dir = os.path.dirname(os.path.abspath(__file__))
-data_path = os.path.join(script_dir, "..", "Data", "dengue_features_train.csv")
-data_path = os.path.normpath(data_path)  # Ensures correct separators
-
-# For debugging, you can print the resolved path
-# print("Resolved data path:", data_path)
-
-df = pd.read_csv(data_path)

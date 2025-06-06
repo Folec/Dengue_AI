@@ -1,13 +1,13 @@
 import streamlit as st
 from shapanalyzer import ShapAnalyzer
-from prediction_model import DengueLSTM
+from model_loader import DengueLSTM
 from gemini import GeminiInterface
 import pandas as pd
 import google.generativeai as genai
 from dashboard import Dashboard 
 import torch
 import torch.nn as nn
-import prediction_model
+import gc
 
 # Streamlit page configuration
 st.set_page_config(
@@ -16,6 +16,12 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Release PyTorch memory
+def clear_torch_cache():
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    gc.collect()
 
 # Load and cache the data
 @st.cache_data(ttl=3600, max_entries=1) 
