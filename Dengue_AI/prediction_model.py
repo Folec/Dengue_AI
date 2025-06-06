@@ -8,7 +8,10 @@ import os
 
 class DengueLSTM:
     def __init__(self, data_dir='Data', city='sj', lags=35, hidden_size=64, num_layers=2, epochs=50, patience=5, seed=42):
-        self.data_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', data_dir))
+        # Ensure data_dir is set relative to the project root
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        self.data_dir = os.path.join(project_root, data_dir)
+        
         self.city = city
         self.lags = lags
         self.hidden_size = hidden_size
