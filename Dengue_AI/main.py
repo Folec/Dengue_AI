@@ -18,7 +18,7 @@ st.set_page_config(
 )
 
 # Load and cache the data
-@st.cache_data
+@st.cache_data(ttl=3600, max_entries=1) 
 def load_data():
     """Load and cache the data to avoid recomputation on every interaction"""
     model = DengueLSTM()
@@ -27,7 +27,7 @@ def load_data():
     df_iq = dfs['Iquitos']
     return df_sj, df_iq
 
-@st.cache_resource
+@st.cache_resource(ttl=3600, max_entries=1)
 def initialize_components():
     """Initialize and cache the components"""
     # Initialize GeminiInterface
