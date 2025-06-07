@@ -197,4 +197,9 @@ class DengueLSTM:
             df_all = model.transform_X_final(result_tuple)
             df_all.insert(0, 'city', city_names[x])  # Insert city name as first column
             dfs[city_names[x]] = df_all
+
+            # Clean up model to free memory
+            del model
+            import gc
+            gc.collect()
         return dfs

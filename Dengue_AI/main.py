@@ -55,8 +55,9 @@ def main():
     # Initialize and run the dashboard
     dataframes = {'San Juan': df_sj, 'Iquitos': df_iq}
 
+    # Dashboard does NOT take rag_query in its __init__, only in .run()
     dashboard = Dashboard(dataframe=dataframes, analyzer=None, gemini=gemini)
-    dashboard.run(shap_summary=None, rag_query=None)
+    dashboard.run(shap_summary=None, rag_query=rag_query)
 
 if __name__ == "__main__":
     main()

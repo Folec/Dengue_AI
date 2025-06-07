@@ -111,8 +111,9 @@ class Dashboard:
             scaler_path = os.path.join(models_dir, f'dengue_scalers_{city}.pkl')
             model_obj.load_model(model_path, scaler_path)
             feature_cols = model_obj.sj_top_features
+
             features_df = df[[col for col in feature_cols if col in df.columns]]
-            analyzer = ShapAnalyzer(model_obj.model, features_df, feature_names=features_df.columns.tolist())
+            analyzer = ShapAnalyzer(model_obj.model, features_df, city=city, sample_size=1000)
         except Exception as e:
             st.warning(f"SHAP model could not be loaded: {e}")
             return
@@ -148,11 +149,11 @@ class Dashboard:
         
         # Display SHAP summary as text
         with st.expander("📝 SHAP Analysis Summary"):
-            try:
-                summary = analyzer.generate_text_summary()
-                st.write(summary)
-            except Exception as e:
-                st.error(f"Error generating SHAP summary: {str(e)}")
+             try:
+                 summary = analyzer.generate_text_summary()
+                 st.write(summary)
+             except Exception as e:
+                 st.error(f"Error generating SHAP summary: {str(e)}")
 
     def display_prompt_result(self, df, shap_summary, rag_query):
         """
@@ -161,9 +162,13 @@ class Dashboard:
         st.subheader("🤖 AI-Generated Insights")
         
         # Display the query
-        st.write("**Query:**")
-        st.info(rag_query)
-        
+        if rag_query is not None:
+            st.write("**Query:**")
+            st.info(rag_query)
+        else:
+            st.write("**Query:**")
+            st.info("No query provided.")
+
         # Generate and display insights
         with st.spinner("Generating insights with AI..."):
             try:
