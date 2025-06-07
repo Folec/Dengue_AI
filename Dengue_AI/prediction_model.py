@@ -202,6 +202,3 @@ class DengueLSTM:
         submission = pd.concat(dfs, ignore_index=True)
         print(submission.to_csv(index=False))
         return submission
-
-# To run for both cities and print the CSV:
-DengueLSTM().get_city_dataframes()
