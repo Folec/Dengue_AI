@@ -10,9 +10,10 @@ class ShapAnalyzer:
         self.city = city
         self.sample_size = sample_size
         self.model_obj = DengueLSTM(city=city)
-        models_dir = os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')), "Models")
-        model_path = os.path.join(models_dir, f'dengue_lstm_{city}.pth')
-        scaler_path = os.path.join(models_dir, f'dengue_scalers_{city}.pkl')
+        
+        model_path = os.path.join("Models", f'dengue_lstm_{city}.pth')
+        scaler_path = os.path.join("Models", f'dengue_scalers_{city}.pkl')
+        
         self.model_obj.load_model(model_path, scaler_path)
         self.model = self.model_obj.model
         self.X_train = self.model_obj.X_train_torch 
