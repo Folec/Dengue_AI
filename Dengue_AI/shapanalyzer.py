@@ -1,72 +1,110 @@
+import sys
+import os
 import shap
 import torch
+import torch.nn as nn
 import matplotlib.pyplot as plt
-from model_loader import DengueLSTM
 import numpy as np
-import os
+
+# Ensure Dengue_AI directory is in sys.path for module imports
+dengue_ai_dir = os.path.dirname(os.path.abspath(__file__))
+if dengue_ai_dir not in sys.path:
+    sys.path.insert(0, dengue_ai_dir)
+
+from model_loader import DengueLSTM
+
+
+class LSTMWrapper(nn.Module):
+    """Wrapper pour rendre le modèle LSTM compatible avec SHAP"""
+    def __init__(self, lstm_model):
+        super().__init__()
+        self.lstm_model = lstm_model
+        
+    def forward(self, x):
+        self.lstm_model.eval()
+        return self.lstm_model(x)
 
 class ShapAnalyzer:
-    def __init__(self, model, features_df, city=None, sample_size=1000):
+    def __init__(self, model, features_df, city=None, sample_size=1000): 
         self.city = city
-        self.sample_size = sample_size
+        self.sample_size = min(sample_size, 1000) 
         self.model_obj = DengueLSTM(city=city)
         
         model_path = os.path.join("Models", f'dengue_lstm_{city}.pth')
         scaler_path = os.path.join("Models", f'dengue_scalers_{city}.pkl')
         
-        self.model_obj.load_model(model_path, scaler_path)
-        self.model = self.model_obj.model
-        self.X_train = self.model_obj.X_train_torch 
+        try:
+            self.model_obj.load_model(model_path, scaler_path)
+            # Wrapper le modèle pour SHAP
+            self.model = LSTMWrapper(self.model_obj.model)
+            self.X_train = self.model_obj.X_train_torch 
+        except Exception as e:
+            print(f"Erreur lors du chargement du modèle: {e}")
+            raise e
+            
         self.shap_values_2d = None
         self.X_train_2d = None
         self.feature_names = None
         self.predictions = None
 
     def compute_shap(self):
-        background = self.X_train[:min(5, self.X_train.shape[0])]
-        explainer = shap.DeepExplainer(self.model, background)
         try:
-            shap_values = explainer.shap_values(self.X_train[:self.sample_size])
-        except AssertionError as e:
-            print("Warning: SHAP DeepExplainer assertion error encountered.")
-            print(str(e))
-            print("This is likely due to unsupported operations in your LSTM model for SHAP DeepExplainer.")
-            print("You can ignore this error for visualization purposes, but SHAP values may not sum to the model output.")
+            background_size = min(3, self.X_train.shape[0])
+            background = self.X_train[:background_size]
+            
+            # Use GradientExplainer for stability
+            explainer = shap.GradientExplainer(self.model, background)
+            
+            sample_data = self.X_train[:self.sample_size]
+            
             try:
-                shap_values = explainer.shap_values(self.X_train[:self.sample_size], check_additivity=False)
-            except Exception as e2:
-                print("Failed to compute SHAP values even with check_additivity=False.")
-                raise e2
-        if isinstance(shap_values, list):
-            shap_values = shap_values[0]
-        shape = shap_values.shape
-        num_samples = shape[0]
-        feature_dim = int(np.prod(shape[1:])) if len(shape) > 1 else 1
-        self.shap_values_2d = shap_values.reshape(num_samples, feature_dim)
-        self.X_train_2d = self.X_train[:self.sample_size].numpy().reshape(num_samples, feature_dim)
-        # Generate default feature names if not provided
-        if hasattr(self.model_obj, "sj_top_features") and self.model_obj.sj_top_features:
-            seq_len = self.X_train.shape[1]
-            base_features = self.model_obj.sj_top_features
-            self.feature_names = [f"{feat}_t{t}" for t in range(seq_len) for feat in base_features]
-        else:
-            self.feature_names = [f"feature_{i}" for i in range(feature_dim)]
-
-    def plot(self):
-        if self.shap_values_2d is None or self.X_train_2d is None:
-            self.compute_shap()
-        plt.figure(figsize=(10, 6))
-        shap.summary_plot(self.shap_values_2d, self.X_train_2d, feature_names=self.feature_names, show=True)
+                shap_values = explainer.shap_values(sample_data, nsamples=500)
+            except Exception as e:
+                print(f"Error with DeepExplainer: {e}")
+                # Fallback to DeepExplainer
+                explainer = shap.DeepExplainer(self.model, background)
+                shap_values = explainer.shap_values(sample_data, check_additivity=False)
+            
+            if isinstance(shap_values, list):
+                shap_values = shap_values[0]
+                
+            shape = shap_values.shape
+            num_samples = shape[0]
+            feature_dim = int(np.prod(shape[1:])) if len(shape) > 1 else 1
+            self.shap_values_2d = shap_values.reshape(num_samples, feature_dim)
+            self.X_train_2d = sample_data.detach().numpy().reshape(num_samples, feature_dim)
+            
+            if hasattr(self.model_obj, "sj_top_features") and self.model_obj.sj_top_features:
+                seq_len = self.X_train.shape[1]
+                base_features = self.model_obj.sj_top_features
+                self.feature_names = [f"{feat}_t{t}" for t in range(seq_len) for feat in base_features]
+            else:
+                self.feature_names = [f"feature_{i}" for i in range(feature_dim)]
+        except Exception as e:
+            print(f"Error while computing value for SHAP: {e}")
+            self.shap_values_2d = None
+            self.X_train_2d = None
+            self.feature_names = None
 
     def plot_mean_shap(self):
         if self.shap_values_2d is None or self.X_train_2d is None:
             self.compute_shap()
-        shap.summary_plot(self.shap_values_2d, self.X_train_2d, feature_names=self.feature_names, plot_type="bar", show=True)
+        try:
+            shap.summary_plot(self.shap_values_2d, self.X_train_2d, 
+                            feature_names=self.feature_names, plot_type="bar", 
+                            show=False, max_display=10)
+        except Exception as e:
+            print(f"Error while computing mean SHAP: {e}")
 
     def plot_swarm(self):
         if self.shap_values_2d is None or self.X_train_2d is None:
             self.compute_shap()
-        shap.summary_plot(self.shap_values_2d, self.X_train_2d, feature_names=self.feature_names, show=True)
+        try:
+            shap.summary_plot(self.shap_values_2d, self.X_train_2d, 
+                            feature_names=self.feature_names, show=False, 
+                            max_display=10)
+        except Exception as e:
+            print(f"Error on swarm plot: {e}")
 
     def plot_dependence(self, feature_index):
         if self.shap_values_2d is None or self.X_train_2d is None:

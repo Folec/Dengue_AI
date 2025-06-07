@@ -1,6 +1,5 @@
 import streamlit as st
 from shapanalyzer import ShapAnalyzer
-from model_loader import DengueLSTM
 from gemini import GeminiInterface
 import pandas as pd
 import google.generativeai as genai
@@ -8,6 +7,13 @@ from dashboard import Dashboard
 import torch
 import torch.nn as nn
 import gc
+
+# Ensure Dengue_AI directory is in sys.path for module imports
+dengue_ai_dir = os.path.dirname(os.path.abspath(__file__))
+if dengue_ai_dir not in sys.path:
+    sys.path.insert(0, dengue_ai_dir)
+
+from model_loader import DengueLSTM
 
 # Streamlit page configuration
 st.set_page_config(
