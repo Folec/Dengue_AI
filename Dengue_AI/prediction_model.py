@@ -7,18 +7,26 @@ from sklearn.model_selection import TimeSeriesSplit
 import os
 
 class DengueLSTM:
-    def __init__(self, data_dir='Data', city='sj', lags=35, hidden_size=64, num_layers=2, epochs=50, patience=5, seed=42):
-        # Ensure data_dir is set relative to the project root
+    # City-specific optimal hyperparameters (from your notebook)
+    CITY_PARAMS = {
+        'sj': dict(lags=35, hidden_size=64, num_layers=2, epochs=50, patience=5),
+        'iq': dict(lags=20, hidden_size=64, num_layers=2, epochs=50, patience=5),  # Use your optimal IQ params here
+    }
+
+    def __init__(self, data_dir='Data', city='sj', seed=42):
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
         self.data_dir = os.path.join(project_root, data_dir)
-        
         self.city = city
-        self.lags = lags
-        self.hidden_size = hidden_size
-        self.num_layers = num_layers
-        self.epochs = epochs
-        self.patience = patience
         self.seed = seed
+
+        # Set city-specific hyperparameters
+        params = self.CITY_PARAMS[city]
+        self.lags = params['lags']
+        self.hidden_size = params['hidden_size']
+        self.num_layers = params['num_layers']
+        self.epochs = params['epochs']
+        self.patience = params['patience']
+
         self._set_seed()
         self._load_data()
         self._prepare_data()
@@ -34,7 +42,6 @@ class DengueLSTM:
         torch.backends.cudnn.benchmark = False
 
     def _load_data(self):
-        # Use os.path.join for cross-platform compatibility
         features_train_path = os.path.join(self.data_dir, 'dengue_features_train.csv')
         labels_train_path = os.path.join(self.data_dir, 'dengue_labels_train.csv')
         features_test_path = os.path.join(self.data_dir, 'dengue_features_test.csv')
@@ -44,36 +51,39 @@ class DengueLSTM:
         self.x_test = pd.read_csv(features_test_path, index_col=[0, 1, 2])
 
     def _prepare_data(self):
-        # Select city data
-        sj_x_train = self.x_train.loc[self.city].copy()
-        sj_y_train = self.y_train.loc[self.city].copy()
-        sj_x_test = self.x_test.loc[self.city].copy()
-        sj_x_train.ffill(inplace=True)
-        sj_x_test.ffill(inplace=True)
-        sj_x_train.drop('week_start_date', axis=1, inplace=True)
+        x_train_city = self.x_train.loc[self.city].copy()
+        y_train_city = self.y_train.loc[self.city].copy()
+        x_test_city = self.x_test.loc[self.city].copy()
+        x_train_city.ffill(inplace=True)
+        x_test_city.ffill(inplace=True)
+        x_train_city.drop('week_start_date', axis=1, inplace=True)
 
-        # Feature selection
-        sj_x_train['total_cases'] = sj_y_train['total_cases']
-        sj_corr = sj_x_train.corr()
-        self.sj_top_features = sj_corr['total_cases'].drop('total_cases').abs().sort_values(ascending=False).head(9).index.tolist()
-        sj_x_train.drop('total_cases', axis=1, inplace=True)
+        # Feature selection: use correlation with total_cases
+        x_train_city['total_cases'] = y_train_city['total_cases']
+        corr = x_train_city.corr()
+        if self.city == 'sj':
+            top_features = corr['total_cases'].drop('total_cases').abs().sort_values(ascending=False).head(9).index.tolist()
+        else:
+            top_features = corr['total_cases'].drop('total_cases').abs().sort_values(ascending=False).head(4).index.tolist()
+        x_train_city.drop('total_cases', axis=1, inplace=True)
+        self.top_features = top_features
 
         # TimeSeriesSplit
         tscv = TimeSeriesSplit(n_splits=5)
-        for train_indices, test_indices in tscv.split(sj_x_train):
+        for train_indices, test_indices in tscv.split(x_train_city):
             pass
-        x_train_sj = sj_x_train.iloc[train_indices].reset_index(drop=True)
-        x_test_sj = sj_x_train.iloc[test_indices].reset_index(drop=True)
-        y_train_sj = sj_y_train.iloc[train_indices].reset_index(drop=True)
-        y_test_sj = sj_y_train.iloc[test_indices].reset_index(drop=True)
+        x_train_final = x_train_city.iloc[train_indices].reset_index(drop=True)
+        x_test_final = x_train_city.iloc[test_indices].reset_index(drop=True)
+        y_train_final = y_train_city.iloc[train_indices].reset_index(drop=True)
+        y_test_final = y_train_city.iloc[test_indices].reset_index(drop=True)
 
         # Scaling
         self.feature_scaler = StandardScaler()
         self.target_scaler = StandardScaler()
-        X_train_scaled = self.feature_scaler.fit_transform(x_train_sj[self.sj_top_features])
-        X_test_scaled = self.feature_scaler.transform(x_test_sj[self.sj_top_features])
-        y_train_scaled = self.target_scaler.fit_transform(y_train_sj['total_cases'].values.reshape(-1, 1)).flatten()
-        y_test_scaled = self.target_scaler.transform(y_test_sj['total_cases'].values.reshape(-1, 1)).flatten()
+        X_train_scaled = self.feature_scaler.fit_transform(x_train_final[self.top_features])
+        X_test_scaled = self.feature_scaler.transform(x_test_final[self.top_features])
+        y_train_scaled = self.target_scaler.fit_transform(y_train_final['total_cases'].values.reshape(-1, 1)).flatten()
+        y_test_scaled = self.target_scaler.transform(y_test_final['total_cases'].values.reshape(-1, 1)).flatten()
 
         # Lagged sequences
         def lagged_sequences_np(X, y, lags):
@@ -92,7 +102,7 @@ class DengueLSTM:
         self.y_test_torch = torch.tensor(self.y_test_seq, dtype=torch.float32)
 
         # For prediction on unseen test set
-        self.sj_x_test = sj_x_test
+        self.x_test_city = x_test_city
 
     class LSTMRegressor(nn.Module):
         def __init__(self, input_size, hidden_size, num_layers):
@@ -148,8 +158,8 @@ class DengueLSTM:
             self.model.load_state_dict(best_model_state)
 
     def predict_unseen(self):
-        x_pred_sj = self.sj_x_test[self.sj_top_features].copy()
-        x_pred_sj_scaled = self.feature_scaler.transform(x_pred_sj)
+        x_pred_city = self.x_test_city[self.top_features].copy()
+        x_pred_city_scaled = self.feature_scaler.transform(x_pred_city)
 
         def lagged_sequences_predict(X, lags):
             Xs = []
@@ -157,49 +167,38 @@ class DengueLSTM:
                 Xs.append(X[i-lags:i])
             return np.array(Xs)
 
-        x_pred_sj_seq = lagged_sequences_predict(x_pred_sj_scaled, self.lags)
-        X_pred_sj_torch = torch.tensor(x_pred_sj_seq, dtype=torch.float32)
+        x_pred_city_seq = lagged_sequences_predict(x_pred_city_scaled, self.lags)
+        X_pred_city_torch = torch.tensor(x_pred_city_seq, dtype=torch.float32)
 
         self.model.eval()
         with torch.no_grad():
-            y_pred_scaled = self.model(X_pred_sj_torch).squeeze().numpy()
+            y_pred_scaled = self.model(X_pred_city_torch).squeeze().numpy()
             y_pred = self.target_scaler.inverse_transform(y_pred_scaled.reshape(-1, 1)).flatten()
             y_pred = np.round(y_pred).astype(int)
             y_pred = np.clip(y_pred, 0, None)
         return y_pred
-    
-    def create_X_final(self):
+
+    def create_city_submission(self):
         y_pred = self.predict_unseen()
-        dates = self.sj_x_test.index[self.lags:]
-        # Get the features used for prediction, aligned with the prediction dates
-        features_df = self.sj_x_test.loc[dates, self.sj_top_features].copy()
-        
-        # DataFrame with predictions
+        dates = self.x_test_city.index[self.lags:]
         df = pd.DataFrame({
-            'predicted_cases': y_pred,
-        }, index=dates)
-        df = df.reset_index()
-        features_df = features_df.reset_index()
-
-        df_full = pd.concat([df, features_df.drop(columns=['year', 'weekofyear'], errors='ignore')], axis=1)
-        return self.X_train_seq, self.sj_top_features, self.model, df_full
-    
-    def transform_X_final(self, X_final_tuple):
-        X_final, feature_names, model, df = X_final_tuple
+            'city': self.city,
+            'year': [idx[0] for idx in dates],
+            'weekofyear': [idx[1] for idx in dates],
+            'total_cases': y_pred
+        })
         return df
-    
-    def get_city_dataframes(self):
-        city_names = {'sj': 'San Juan', 'iq': 'Iquitos'}
-        dfs = {}
-        for x in ['sj', 'iq']:
-            model = DengueLSTM(city=x)
-            result_tuple = model.create_X_final()
-            df_all = model.transform_X_final(result_tuple)
-            df_all.insert(0, 'city', city_names[x])  # Insert city name as first column
-            dfs[city_names[x]] = df_all
 
-            # Clean up model to free memory
+    def get_city_dataframes(self):
+        dfs = []
+        for city in ['sj', 'iq']:
+            model = DengueLSTM(city=city)
+            model.train()
+            df = model.create_city_submission()
+            dfs.append(df)
             del model
             import gc
             gc.collect()
-        return dfs
+        submission = pd.concat(dfs, ignore_index=True)
+        print(submission.to_csv(index=False))
+        return submission
