@@ -113,9 +113,9 @@ class Dashboard:
 
         try:
             model_obj = DengueLSTM(city=city)
-            # Specify repository
-            repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            models_dir = os.path.join(repo_root, "Models")
+            # Use a relative path to the Models directory
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            models_dir = os.path.join(base_dir, "Models")
             model_path = os.path.join(models_dir, f'dengue_lstm_{city}.pth')
             scaler_path = os.path.join(models_dir, f'dengue_scalers_{city}.pkl')
             model_obj.load_model(model_path, scaler_path)
