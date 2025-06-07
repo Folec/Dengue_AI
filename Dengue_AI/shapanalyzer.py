@@ -25,14 +25,13 @@ class LSTMWrapper(nn.Module):
         return self.lstm_model(x)
 
 class ShapAnalyzer:
-    def __init__(self, model, features_df, city=None, sample_size=1000): 
+    def __init__(self, model, features_df, city=None, sample_size=100): 
         self.city = city
-        self.sample_size = min(sample_size, 1000) 
+        self.sample_size = min(sample_size, 100) 
         self.model_obj = DengueLSTM(city=city)
         
-        # Use a relative path
-        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        models_dir = os.path.join(repo_root, "Models")
+        # Explicit paths for model and scaler files
+        models_dir = r"D:\Etudes\Big Data\Current_trends_in_ai\Project\DENGUE\Models"
         model_path = os.path.join(models_dir, f'dengue_lstm_{city}.pth')
         scaler_path = os.path.join(models_dir, f'dengue_scalers_{city}.pkl')
         
