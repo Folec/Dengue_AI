@@ -30,16 +30,18 @@ class ShapAnalyzer:
         self.sample_size = min(sample_size, 1000) 
         self.model_obj = DengueLSTM(city=city)
         
-        model_path = os.path.join("Models", f'dengue_lstm_{city}.pth')
-        scaler_path = os.path.join("Models", f'dengue_scalers_{city}.pkl')
+        # Explicit paths for model and scaler files
+        models_dir = r"D:\Etudes\Big Data\Current_trends_in_ai\Project\DENGUE\Models"
+        model_path = os.path.join(models_dir, f'dengue_lstm_{city}.pth')
+        scaler_path = os.path.join(models_dir, f'dengue_scalers_{city}.pkl')
         
         try:
             self.model_obj.load_model(model_path, scaler_path)
-            # Wrapper le modèle pour SHAP
             self.model = LSTMWrapper(self.model_obj.model)
             self.X_train = self.model_obj.X_train_torch 
         except Exception as e:
             print(f"Erreur lors du chargement du modèle: {e}")
+            print(f"Vérifiez que les fichiers modèles existent bien ici : {models_dir}")
             raise e
             
         self.shap_values_2d = None
