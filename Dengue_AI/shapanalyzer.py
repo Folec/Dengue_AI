@@ -30,8 +30,9 @@ class ShapAnalyzer:
         self.sample_size = min(sample_size, 1000) 
         self.model_obj = DengueLSTM(city=city)
         
-        # Explicit paths for model and scaler files
-        models_dir = r"D:\Etudes\Big Data\Current_trends_in_ai\Project\DENGUE\Models"
+        # Use a relative path
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        models_dir = os.path.join(repo_root, "Models")
         model_path = os.path.join(models_dir, f'dengue_lstm_{city}.pth')
         scaler_path = os.path.join(models_dir, f'dengue_scalers_{city}.pkl')
         

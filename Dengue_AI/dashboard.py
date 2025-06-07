@@ -113,7 +113,9 @@ class Dashboard:
 
         try:
             model_obj = DengueLSTM(city=city)
-            models_dir = os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')), "Models")
+            # Specify repository
+            repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            models_dir = os.path.join(repo_root, "Models")
             model_path = os.path.join(models_dir, f'dengue_lstm_{city}.pth')
             scaler_path = os.path.join(models_dir, f'dengue_scalers_{city}.pkl')
             model_obj.load_model(model_path, scaler_path)
@@ -123,6 +125,7 @@ class Dashboard:
             analyzer = ShapAnalyzer(model_obj.model, features_df, city=city, sample_size=1000)
         except Exception as e:
             st.warning(f"SHAP model could not be loaded: {e}")
+            st.info(f"Tried to load model from: {model_path} and scaler from: {scaler_path}")
             return
 
         # Create tabs for different SHAP visualizations
