@@ -25,16 +25,21 @@ class LSTMWrapper(nn.Module):
         return self.lstm_model(x)
 
 class ShapAnalyzer:
-    def __init__(self, model, features_df, city=None, sample_size=100): 
+    def __init__(self, model, features_df, city=None, sample_size=10): 
         self.city = city
-        self.sample_size = min(sample_size, 100) 
+        self.sample_size = min(sample_size, 10) 
         self.model_obj = DengueLSTM(city=city)
         
-        # Explicit paths for model and scaler files
-        models_dir = r"D:\Etudes\Big Data\Current_trends_in_ai\Project\DENGUE\Models"
+        # Explicit paths for model and scaler files        
+        models_dir = os.path.join(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')), "Models")
         model_path = os.path.join(models_dir, f'dengue_lstm_{city}.pth')
         scaler_path = os.path.join(models_dir, f'dengue_scalers_{city}.pkl')
-        
+
+        # temporary fix for loading model
+        print("models_dir =", models_dir)
+        print("model_path =", model_path)
+        print("scaler_path =", scaler_path)
+
         try:
             self.model_obj.load_model(model_path, scaler_path)
             self.model = LSTMWrapper(self.model_obj.model)
@@ -60,7 +65,7 @@ class ShapAnalyzer:
             sample_data = self.X_train[:self.sample_size]
             
             try:
-                shap_values = explainer.shap_values(sample_data, nsamples=500)
+                shap_values = explainer.shap_values(sample_data, nsamples=50)
             except Exception as e:
                 print(f"Error with DeepExplainer: {e}")
                 # Fallback to DeepExplainer

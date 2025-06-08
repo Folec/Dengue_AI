@@ -122,7 +122,7 @@ class Dashboard:
             feature_cols = model_obj.sj_top_features
 
             features_df = df[[col for col in feature_cols if col in df.columns]]
-            analyzer = ShapAnalyzer(model_obj.model, features_df, city=city, sample_size=1000)
+            analyzer = ShapAnalyzer(model_obj.model, features_df, city=city, sample_size=10)
         except Exception as e:
             st.warning(f"SHAP model could not be loaded: {e}")
             st.info(f"Tried to load model from: {model_path} and scaler from: {scaler_path}")
